@@ -26,7 +26,7 @@ def recv_file(s, name, location):
 
     downloadslocation = location +'/resources/downloads/'
 
-    q = open(os.path.join(downloadslocation, name,"wb")
+    q = open(os.path.join(downloadslocation, name),"wb")
     while size > recvd:
         sys.stdout.write(str((float(recvd)/size)*100)[:4]+ '%' + '\r')
         sys.stdout.flush()

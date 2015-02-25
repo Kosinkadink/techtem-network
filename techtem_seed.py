@@ -116,7 +116,7 @@ def seed_recv_file(s): #receives files from master
 		print name + ' download in progress...'
 		if not os.path.exists(downloadslocation):
 			os.makedirs(downloadslocation)
-		q = open(os.path.join(downloadslocation, name), 'w')
+		q = open(os.path.join(downloadslocation, name), 'wb')
 		while size > recvd:
 			sys.stdout.write(str((float(recvd)/size)*100)[:4]+ '%' + '\r')
 			sys.stdout.flush()
