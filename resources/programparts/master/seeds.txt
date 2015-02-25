@@ -1,0 +1,13 @@
+##################################################################################################################
+##The format is: ||ip:port||filetosend.extension@@/destination/||
+##Destination is relative to the location of the seed script. To place in resources folder, /resources/
+##If destination is same directory as location of the seed script, destination is: HOME
+##If the file is to be ran after download of all files, use % after destination. Example: /resources/% or HOME%
+##Only line starting with || will be read. Any line not starting with || will not be read.
+##################################################################################################################
+#||localhost:9007||img1.jpg@@/resources/doesnotexist/lookinherem80/||
+||localhost:9008||techtem_filetransferserver.py@@HOME%||techtem_networkserver.py@@HOME%||
+#||localhost:9008||techtem_radchatserver.py@@HOME||techtem_filetransferserver.py@@HOME||
+#||localhost:9007||techtem_chatserver.py@@/resources/||name.py@@/resources/protocols/||
+#||localhost:9010||techtemnetworkserver.py||
+#||localhost:9011||filetransferserver.py||
