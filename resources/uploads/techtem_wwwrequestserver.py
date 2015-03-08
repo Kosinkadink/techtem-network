@@ -1,14 +1,9 @@
 #!/usr/bin/python2
-import sys, socket, select, os, threading,subprocess
+import sys, socket, select, os, threading, urllib2
 from time import strftime, sleep
-from hashlib import sha1
 
 #initialization of the server
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))) #directory from which this script is ran
-passwordSet = False
-password = None
-version = '1.0'
-filestorun = []
 
 if not os.path.exists(__location__+'/resources'): os.makedirs(__location__+'/resources')
 if not os.path.exists(__location__+'/resources/protocols'): os.makedirs(__location__+'/resources/protocols') #for protocol scripts
@@ -24,9 +19,9 @@ if not os.path.exists(__location__+'/resources/protocols/protlist.txt'):
 		pass
 
 ### server specific files start ###
-if not os.path.exists(__location__+'/resources/programparts/filetransfer'): os.makedirs(__location__+'/resources/programparts/filetransfer')
-if not os.path.exists(__location__+'/resources/programparts/filetransfer/approvedfiles.txt'):
-	with open(__location__+'/resources/programparts/filetransfer/approvedfiles.txt', "a") as makeprot:
+if not os.path.exists(__location__+'/resources/programparts/wwwrequest'): os.makedirs(__location__+'/resources/programparts/wwwrequest')
+if not os.path.exists(__location__+'/resources/programparts/wwwrequest/approvedfiles.txt'):
+	with open(__location__+'/resources/programparts/wwwrequest/approvedfiles.txt', "a") as makeprot:
 		makeprot.write("")
 ### server specific files end ###
 
@@ -64,82 +59,55 @@ with open(__location__+'/resources/protocols/protlist.txt') as protlist:
 			finally:
 				sys.path[:] = path
 
+
 def serverterminal(): #used for server commands
 	while 1:
 		inp = raw_input("")
 		if inp:
-			if inp == 'help':
-				print "setpass [password] - set password"
-				print "exit - close seed"
-			elif inp == 'exit':
+			if inp == 'exit':
 				quit()
-			elif inp == 'clear':
-				clear()
-			elif inp == 'return':
-				print password
-			elif inp.split(None, 1)[0] == 'setpass':
-				try:
-					setPass(inp.split(None, 1)[1])
-				except Exception,e:
-					print str(e)
+			elif inp == '?':
+				print 'www request online at 9012'
 
-def setPass(pswrd): #sets password, stores it as SHA1 hash
-	global password
-	global passwordSet
-	password = sha1(pswrd).hexdigest()[-10:-1]
-	passwordSet = True
 
-def seed_recv_file(s): #receives files from master
-	global filestorun
-	gene = s.recv(512)
-	s.send('ok')
-	name,destination = gene.split('@@')
-	if destination.endswith("%"):
-		destination = destination[:-1]
-		if destination == 'HOME':
-			filestorun += ['/' +name]
-		else:
-			filestorun += [destination+name]
-	if destination == 'HOME':
-		downloadslocation = __location__
-	else:
-		downloadslocation = __location__ + destination
+def wwwrequest_server(s):
 
-	has = s.recv(2)
-	if has != 'ok':
-		return '404'
-	else:
-		s.sendall('ok')
-		size = s.recv(16)
-		size = int(size.strip())
-		recvd = 0
-		print name + ' download in progress...'
-		if not os.path.exists(downloadslocation):
-			os.makedirs(downloadslocation)
-		q = open(os.path.join(downloadslocation, name), 'wb')
-		while size > recvd:
-			sys.stdout.write(str((float(recvd)/size)*100)[:4]+ '%' + '\r')
-			sys.stdout.flush()
-			data = s.recv(1024)
-			if not data: 
-				break
-			recvd += len(data)
-			q.write(data)
-		s.sendall('ok')
-		q.close()
-		sys.stdout.write('100.0%\n')
-		print name + ' download complete'
-		return '111'
+	clientsocket = s									   
+
+	data = s.recv(1024)
+	cmd = data[:data.find('\n')]
+
+	try:
+		if cmd == 'get':
+			x, file_name, x = data.split('\n', 2)
+			print file_name
+
+			website = urllib2.urlopen(file_name) #look up website
+
+			print "website found"
+			s.sendall('ok')
+
+			data = website.read()
+			s.sendall('%16d' % len(data))
+			s.sendall(data)
+			s.recv(2)
+
+			print 'success'
+		return
+	except Exception,e:
+		print str(e)
+		s.sendall('no')
+		return
 
 def servergen():
-	global password, filestorun, version
-	print 'server started - version ' + version + '\n'
+	print 'server started\n'
 	# create a socket object
-	serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+	serversocket = socket.socket(
+				socket.AF_INET, socket.SOCK_STREAM) 
 
 	# get local machine name
-	host = ""
-	port = 9008
+	host = ""				   
+	port = 9012
 
 	# bind to the port
 	serversocket.bind((host, port))								  
@@ -152,54 +120,27 @@ def servergen():
 		clientsocket,addr = serversocket.accept()
 		print("Got a connection from %s" % str(addr))
 		try:
-			clientsocket.sendall('seedtransfer:seedtransfer_client') #check is master is connecting
+			clientsocket.sendall('wwwrequest:wwwrequest_client')
 			compat = clientsocket.recv(1)
-			if compat != 'y': #not a master, so respond with 
-				clientsocket.sendall('need *master* protocol\n')
+			if compat != 'y':
+				clientsocket.sendall('need *wwwrequest* protocol\n')
 				print 'does not have protocol'
 				clientsocket.close
 			else:
 				print 'HAS protocol'
-				clientsocket.sendall('pass')
-				masterpass = clientsocket.recv(len(password))
-				if masterpass != password:
-					clientsocket.sendall('n')
-					print 'master has invalid password'
-					clientsocket.shutdown(socket.SHUT_RDWR)
-				else:
-					clientsocket.sendall('y')
-					print 'master has valid password'
-					while True:
-						sending = clientsocket.recv(1)
-						clientsocket.sendall('ok')
-						if sending == 'y':
-							seed_recv_file(clientsocket)
-						else:
-							break
 
-				print filestorun
-				serversocket.shutdown(socket.SHUT_RDWR)
-				for file in filestorun:
-					print 'attempting to start ' + file
-					subprocess.Popen('python ' + __location__+file, shell=True)
-					print file + ' started'
-				filestorun = []
-				print filestorun
+				wwwrequestthread = threading.Thread(target=wwwrequest_server,args=(clientsocket,))
+				wwwrequestthread.daemon = True
+				wwwrequestthread.start()
+
 				clientsocket.close
-			print("Disconnection by %s with data received" % str(addr))
-			break
+				print threading.activeCount()
+			print("Disconnection by %s with data received\n" % str(addr))
 		except Exception,e:
-			print str(e) + ''
+			print str(e) + '\n'
 	
-	#print 'closing seed server now\n'
-	
-	#sys.exit()
-
-def clear(): #clear screen, typical way
-	if os.name == 'nt':
-		os.system('cls')
-	else:
-		os.system('clear')
+	print 'closing now'		
+	serversocket.close()
 
 threads = []
 serverprocess = threading.Thread(target=servergen)

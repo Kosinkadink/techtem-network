@@ -2,11 +2,6 @@
 ##The format is: ||requestedurl||matchingip:port||
 ##Only lines starting with || will be read.
 ########################################################
-||nothing.ttn||stuff:9009||
-||nothing1.ttn||stuff:9009||
-||nothing2.ttn||stuff:9009||
-||nothing3.ttn||stuff:9009||
-||nothing4.ttn||stuff:9009||
-||nothing5.ttn||stuff:9009||
 ||chat.ttn||localhost:9009||
 ||downloads.ttn||localhost:9011||
+||access.ttn||localhost:9012||
