@@ -87,6 +87,12 @@ def net_client():
 						ip = None 
 						data = None
 					print connectip(ip,data)
+				elif inp.split()[0] == '/start':
+					try:
+						data = inp.split()[1:]
+					except: 
+						data = None
+					print startstandalone(data)
 				elif inp.split()[0] == '/quit' or inp.split()[0] == '/leave' or inp.split()[0] == '/exit':
 					quit()
 				elif inp.split()[0] == '/clear':
@@ -101,6 +107,28 @@ def clear(): #clear screen, typical way
 		os.system('cls')
 	else:
 		os.system('clear')
+
+def startstandalone(data): #used to start protocols not requiring connecting
+	
+	scriptname = data[1]
+	compat = 'n'
+	with open(__location__+'/resources/protocols/protlist.txt') as protlist:
+		for line in protlist:
+			if line == scriptname or line == scriptname + '\n' :
+				compat = 'y'
+	if compat == 'y':
+		script = sys.modules[scriptname]
+		varcheck = getattr(script,'variables')
+		if len(varcheck) <= len(data):
+			use = getattr(script,function)
+			print 'success'
+		else:
+			print 'incorrect argument[s]'
+	else:
+		return 'failure - protocol not found'
+
+	query = use(data,__location__)
+	return query
 
 def connectip(ip,data):
 	try:

@@ -1,6 +1,7 @@
 import socket
 
 variables = ['url']
+standalone = False
 
 def name(client, url, none):
 

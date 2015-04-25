@@ -3,9 +3,15 @@ import socket, os, sys
 from time import sleep
 
 variables = ['website']
+standalone = False
+
+def initialize(location):
+    if not os.path.exists(location + '/resources/cache/wwwrequest'):
+        os.makedirs(location + '/resources/cache/wwwrequest') #used to store info for protocols and client
 
 def wwwrequest_client(s,data,location):
 
+    initialize(location)
     filename = data[0]
     status = recv_file(s,filename,location)
     s.close
@@ -24,7 +30,7 @@ def recv_file(s, name, location):
     size = int(size.strip())
     recvd = 0
 
-    downloadslocation = location +'/resources/downloads/'
+    downloadslocation = location +'/resources/cache/wwwrequest/'
 
     newname = ''
     skippedchars = '/.:'

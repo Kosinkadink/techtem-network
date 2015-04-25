@@ -1,14 +1,18 @@
 #!/usr/bin/python2
-import sys, socket, select, os, threading,subprocess
+import sys, socket, select, os, threading, subprocess
 from time import strftime, sleep
 from hashlib import sha1
 
 #initialization of the server
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))) #directory from which this script is ran
 passwordSet = False
+continueReceive = True
 password = None
 version = '1.0'
 filestorun = []
+filesrunning = []
+processID = 0
+
 
 if not os.path.exists(__location__+'/resources'): os.makedirs(__location__+'/resources')
 if not os.path.exists(__location__+'/resources/protocols'): os.makedirs(__location__+'/resources/protocols') #for protocol scripts
@@ -65,14 +69,19 @@ with open(__location__+'/resources/protocols/protlist.txt') as protlist:
 				sys.path[:] = path
 
 def serverterminal(): #used for server commands
+	global continueReceive
 	while 1:
 		inp = raw_input("")
 		if inp:
 			if inp == 'help':
 				print "setpass [password] - set password"
+				print "return - show password hash"
+				print "Rec - print if seed continues receiving"
+				print "doRec - keep receiving after master commands"
+				print "dontRec - stop receiving after master commands"
 				print "exit - close seed"
 			elif inp == 'exit':
-				quit()
+				exit()
 			elif inp == 'clear':
 				clear()
 			elif inp == 'return':
@@ -82,10 +91,16 @@ def serverterminal(): #used for server commands
 					setPass(inp.split(None, 1)[1])
 				except Exception,e:
 					print str(e)
+			elif inp == 'doRec':
+				continueReceive = True
+			elif inp == 'dontRec':
+				continueReceive = False
+			elif inp == 'Rec':
+				print continueReceive
+			
 
 def setPass(pswrd): #sets password, stores it as SHA1 hash
-	global password
-	global passwordSet
+	global password, passwordSet
 	password = sha1(pswrd).hexdigest()[-10:-1]
 	passwordSet = True
 
@@ -131,8 +146,74 @@ def seed_recv_file(s): #receives files from master
 		print name + ' download complete'
 		return '111'
 
+def receiveAllFiles(s): # loops receiving files until master denies
+	global processID, filestorun, filesrunning
+	clientsocket = s
+	while True:
+		sending = clientsocket.recv(1)
+		clientsocket.sendall('ok')
+		if sending == 'y':
+			seed_recv_file(clientsocket)
+		else:
+			break
+
+	print filestorun
+	#serversocket.shutdown(socket.SHUT_RDWR)
+	for file in filestorun:
+		print 'attempting to start ' + file
+		processname = 'process' + str(processID)
+		globals()[processname] = subprocess.Popen('python ' + __location__+file, shell=True)
+		threads.append(globals()[processname])
+		print file + ' started'
+		processID += 1
+
+	filestorun = []
+	print filestorun
+
+def distinguishCommand(s): # interpret what master requests
+	order = s.recv(128)
+	print 'command is: %s' % order
+
+	if order == 'receive': # receive all files sent by master
+		s.send('ok')
+		print 'command understood, performing: %s' % order
+		receiveAllFiles(s)
+
+	elif order == 'send': # send all files requested by master
+		s.send('no')
+		print 'command not understood'
+	elif order == 'replace': # replace seed with another version
+		s.send('no')
+		print 'command not understood'
+
+	elif order == 'diagnostics': # run diagnostics requested by master
+		s.send('ok')
+		print 'command understood, performing: %s' % order
+		diagnosticsToRun(s)
+
+	elif order == 'runproc': # run a process from file already on seed
+		s.send('no')
+		print 'command not understood'
+	elif order == 'killproc': # kill a process from file already on seed
+		s.send('no')
+		print 'command not understood'
+
+	elif order == 'closeseed': # close seed, killing all processes
+		s.send('ok')
+		print 'command understood, performing: %s' % order
+		s.close
+		exit()
+
+	elif order == 'burnseed': # close all processes related to seed, delete all files including seed
+		s.send('no')
+		print 'command not understood'
+	else:
+		s.send('no')
+		print 'command not understood'
+
+
 def servergen():
-	global password, filestorun, version
+	global password, version
 	print 'server started - version ' + version + '\n'
 	# create a socket object
 	serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
@@ -142,17 +223,17 @@ def servergen():
 	port = 9008
 
 	# bind to the port
-	serversocket.bind((host, port))								  
+	serversocket.bind((host, port))						  
 
 	# queue up to 10 requests
-	serversocket.listen(10)										   
+	serversocket.listen(10)							   
 
 	while 1:
 		# establish a connection
 		clientsocket,addr = serversocket.accept()
 		print("Got a connection from %s" % str(addr))
 		try:
-			clientsocket.sendall('seedtransfer:seedtransfer_client') #check is master is connecting
+			clientsocket.sendall('seedtransfer:seedtransfer_client') #check if master is connecting
 			compat = clientsocket.recv(1)
 			if compat != 'y': #not a master, so respond with 
 				clientsocket.sendall('need *master* protocol\n')
@@ -165,31 +246,21 @@ def servergen():
 				if masterpass != password:
 					clientsocket.sendall('n')
 					print 'master has invalid password'
-					clientsocket.shutdown(socket.SHUT_RDWR)
+					clientsocket.close
 				else:
 					clientsocket.sendall('y')
 					print 'master has valid password'
-					while True:
-						sending = clientsocket.recv(1)
-						clientsocket.sendall('ok')
-						if sending == 'y':
-							seed_recv_file(clientsocket)
-						else:
-							break
+					distinguishCommand(clientsocket)
 
-				print filestorun
-				serversocket.shutdown(socket.SHUT_RDWR)
-				for file in filestorun:
-					print 'attempting to start ' + file
-					subprocess.Popen('python ' + __location__+file, shell=True)
-					print file + ' started'
-				filestorun = []
-				print filestorun
 				clientsocket.close
 			print("Disconnection by %s with data received" % str(addr))
-			break
+
+			if not continueReceive: #break receiving from a master if set to False
+				print 'closing connectivity to master'
+				break
+
 		except Exception,e:
-			print str(e) + ''
+			print str(e) + '\n'
 	
 	#print 'closing seed server now\n'
 	
@@ -200,6 +271,13 @@ def clear(): #clear screen, typical way
 		os.system('cls')
 	else:
 		os.system('clear')
+
+def exit(): #kill all processeses for a tidy exit
+	#global threads
+	#for operation in threads:
+	#	operation._Thread_stop()
+	#	print 'thread %s stopped successfully' % operation
+	quit()
 
 threads = []
 serverprocess = threading.Thread(target=servergen)

@@ -1,5 +1,5 @@
 #!/usr/bin/python2
-import sys, socket, select, os, threading, urllib2
+import sys, socket, select, os, threading, urllib2, urllib
 from time import strftime, sleep
 
 #initialization of the server
@@ -88,6 +88,7 @@ def wwwrequest_server(s):
 			s.sendall('ok')
 
 			data = website.read()
+
 			s.sendall('%16d' % len(data))
 			s.sendall(data)
 			s.recv(2)
@@ -134,7 +135,6 @@ def servergen():
 				wwwrequestthread.start()
 
 				clientsocket.close
-				print threading.activeCount()
 			print("Disconnection by %s with data received\n" % str(addr))
 		except Exception,e:
 			print str(e) + '\n'

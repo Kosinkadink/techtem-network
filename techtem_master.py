@@ -15,6 +15,7 @@ if not os.path.exists(__location__+'/resources/cache'): os.makedirs(__location__
 if not os.path.exists(__location__+'/resources/programparts'): os.makedirs(__location__+'/resources/programparts') #for storing protocol files
 if not os.path.exists(__location__+'/resources/uploads'): os.makedirs(__location__+'/resources/uploads') #used to store files for upload
 if not os.path.exists(__location__+'/resources/downloads'): os.makedirs(__location__+'/resources/downloads') #used to store downloaded files
+
 #master files start
 if not os.path.exists(__location__+'/resources/programparts/master'): os.makedirs(__location__+'/resources/programparts/master')
 
@@ -107,23 +108,18 @@ def serverterminal():
 			else:
 				print "Invalid command"
 
-def setPass(pswrd):
+def setPass(pswrd): #set password
 	global password
 	global passwordSet
 	password = sha1(pswrd).hexdigest()[-10:-1]
 	passwordSet = True
 
-def pingallrepeat():
-	with open(__location__+'/resources/programparts/master/seeds.txt', "r") as seeds:
-		for line in seeds:
-			while 1:
-				sleep(10)
-				if line:
-					if line in pingseeds:
-						if line.startswith('||'):
-							print ping(line.split("||")[1])
+def pingallrepeat(): #ping all seeds every set period of time
+	while 1:
+		pingall()
+		sleep(10)
 
-def pingall():
+def pingall(): #ping all seeds on list to determine what seeds are online
 	with open(__location__+'/resources/programparts/master/seeds.txt', "r") as seeds:
 		for line in seeds:
 			if line.startswith('||'):
@@ -133,17 +129,17 @@ def pingall():
 					print "line is poorly formatted"
 	print ''
 
-def connectall():
+def connectall(): #initialize all seeds by sending/starting files
 	with open(__location__+'/resources/programparts/master/seeds.txt', "r") as seeds:
 		for line in seeds:
 			if line.startswith('||'):
-				try:
-					print connectip(line.split("||")[1],line.split("||")[2:-1])
+				try: #connect to ip, save data, issue command
+					print connectip(line.split("||")[1],line.split("||")[2:-1],'receive')
 				except Exception,e:
 					print str(e) + "\n"
 	print ''
 
-def ping(ip):
+def ping(ip): #attempt to connect to ip to determine if server is online
 	try:
 		host = ip.split(':')[0]
 		port = int(ip.split(':')[1])
@@ -159,7 +155,7 @@ def ping(ip):
 	s.close
 	return ip + " seed online"
 
-def connectip(ip,data):
+def connectip(ip,data,command): #connect to ip
 	try:
 		host = ip.split(':')[0]
 		port = int(ip.split(':')[1])
@@ -173,9 +169,9 @@ def connectip(ip,data):
 		s.close
 		return "Seed at " + ip + " not available\n"
 	print "\nConnection successful to " + ip
-	return connectprotocolclient(s,data)
+	return connectprotocolclient(s,data,command)
 
-def filetransfer_seed(s,data):
+def filetransfer_seed(s,data): #send file to seed
 
 	seed = s
 	print 'sending data'								   
@@ -205,7 +201,47 @@ def filetransfer_seed(s,data):
 		print file_name + " not found"
 	return
 
-def connectprotocolclient(s, data):
+def diagnosticsCommand(ser, data): #request diagnostics from seed
+	pass
+
+def receiveCommand(ser, data): #make seed receive all files from master
+	for gene in data:
+		ser.sendall('y')
+		ser.recv(2)
+		filetransfer_seed(ser,gene)
+	ser.sendall('n')
+	print 'sending query complete'
+
+def distinguishCommand(ser, data, command): #interpret what to tell seed
+	if command == 'receive':
+		order = 'receive'
+		ser.sendall(order)
+		understood = ser.recv(2)
+		if understood == 'ok':
+			print 'command: %s understood by seed' % order
+			receiveCommand(ser, data)
+		else:
+			print 'command not understood by seed'
+	if command == 'closeseed':
+		order = 'closeseed'
+		ser.sendall(order)
+		understood = ser.recv(2)
+		if understood == 'ok':
+			print 'command: %s understood by seed' % order
+		else:
+			print 'command not understood by seed'
+	if command == 'diagnostics':
+		order = 'diagnostics'
+		ser.sendall(order)
+		understood = ser.recv(2)
+		if understood == 'ok':
+			print 'command: %s understood by seed' % order
+			diagnosticsCommand(ser, data)
+		else:
+			print 'command not understood by seed'
+
+
+def connectprotocolclient(s, data, command): #communicate via protocol to command seed
 	global password
 	ser = s
 	identity = ser.recv(1024)
@@ -224,22 +260,17 @@ def connectprotocolclient(s, data):
 			return 'failure: invalid password'
 		else:
 			print 'success complete: password match'
-			for gene in data:
-				ser.sendall('y')
-				ser.recv(2)
-				filetransfer_seed(ser,gene)
-			ser.sendall('n')
-			print 'sending query complete'
+			distinguishCommand(ser, data, command)
 
 	else:
 		ser.sendall(compat)
 		resp = ser.recv(1024)
 		print resp
 		ser.close
-		return 'failure'
+		return 'failure. closing connection...'
 
 	ser.close
-	return 'success'
+	return 'connection closed'
 
 def clear(): #clear screen, typical way
 	if os.name == 'nt':

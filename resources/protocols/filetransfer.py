@@ -3,6 +3,7 @@ import socket, os, sys
 from time import sleep
 
 variables = ['filename']
+standalone = False
 
 def filetransfer_client(s,data,location):
 
