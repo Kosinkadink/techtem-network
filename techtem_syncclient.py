@@ -9,7 +9,7 @@ __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file
 passwordSet = False
 password = None
 username = None
-version = '1.0'
+version = '1.1'
 
 if not os.path.exists(__location__+'/resources'): os.makedirs(__location__+'/resources')
 if not os.path.exists(__location__+'/resources/protocols'): os.makedirs(__location__+'/resources/protocols') #for protocol scripts
@@ -157,14 +157,12 @@ def createSyncState():
 				timestamp = connectTime()
 				with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "a") as timedoc:
 					timedoc.write(timestamp)
+		print 'Creating sync state...'
 		with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "a") as timedoc:
 			list = checksumList(__location__ + '/resources/programparts/sync/%s' % username.lower(), 'sh')
 			for item in list:
 				timedoc.write('\n' + item)
-		#with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "rb") as timedoc:
-		#	liststuff = []
-		#	liststuff += [timedoc.readline()]
-		#	print liststuff
+		print 'Sync state created.'
 	except Exception,e:
 		print str(e) + '\n'
 
@@ -187,7 +185,7 @@ def connectSync():
 			#	timestamp = connectTime()
 			#	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "a") as timedoc:
 			#		timedoc.write(timestamp)
-		print connectToServer('sync','sync')
+		print connectToServer('spec','sync')
 
 	except Exception,e:
 		print str(e) + '\n'
@@ -265,10 +263,10 @@ def checksumList(itempath, type):
 def checksum(itempath):
 	if os.path.getsize(itempath) < 50240000:
 		data = md5(open(itempath).read()).hexdigest()
-		print '[%s]' % data
+		#print '[%s]' % data
 		return ':' + data
 	else:
-		print '['
+		#print '['
 		with open(itempath) as file:
 			datamult = ':'
 			while True:
@@ -276,10 +274,10 @@ def checksum(itempath):
 				if data:
 					data = md5(data).hexdigest()
 					datamult += data
-					print data
+					#print data
 				else:
 					break
-			print ']' 
+			#print ']' 
 			#print 'Checksum complete.'
 			return datamult
 
@@ -298,11 +296,11 @@ def sizeDir2(folder): # get size of directory and all subdirectories
 def checksum2(itempath):
 	if os.path.getsize(itempath) < 50240000:
 		data = sha1(open(itempath).read()).hexdigest()
-		print '[%s]' % data
+		#print '[%s]' % data
 		return ':' + data
 		
 	else:
-		print '['
+		#print '['
 		with open(itempath) as file:
 			datamult = ':'
 			while True:
@@ -310,10 +308,10 @@ def checksum2(itempath):
 				if data:
 					data = sha1(data).hexdigest()
 					datamult += data
-					print data
+					#print data
 				else:
 					break
-			print ']' 
+			#print ']' 
 			#print 'Checksum complete.'
 			return datamult
 		
@@ -366,7 +364,7 @@ def connectip(ip,data,command): #connect to ip
 	except:
 		return 'invalid host/port provided\n'
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-	s.settimeout(10)
+	s.settimeout(5)
 	try:
 		s.connect((host, port))
 	except:
@@ -377,7 +375,8 @@ def connectip(ip,data,command): #connect to ip
 
 def sendItem(s,data): #send file to seed
 
-	print 'sending data'								   
+	print 'sending data'
+	print data							   
 	s.sendall(data)
 	print 'awaiting reply'
 	s.recv(2)
@@ -402,7 +401,62 @@ def sendItem(s,data): #send file to seed
 			print file_name + " sending..."
 			sent = 0
 			while True:
-				sys.stdout.write(str((float(recvd)/filelength)*100)[:4]+ '%' + '\r')
+				try:
+					sys.stdout.write(str((float(sent)/filelength)*100)[:4]+ '%' + '\r')
+					sys.stdout.flush()
+				except:
+					pass
+				data = f.read(10240)
+				if not data:
+					break
+				sent += len(data)
+				s.sendall(data)
+		#print 'program: %s' % str(len(data))
+		#print str(os.path.getsize(file))
+
+		#print file_name + " sending..."
+		#s.sendall(data)
+		s.recv(2)
+		sys.stdout.write('100.0%\n')
+		print file_name + " sending successful"
+		
+	else:
+		print file_name + " not found"
+
+def sendTimestamp(s): #send file to seed
+	
+	data = __location__+'/resources/programparts/sync/%s/timestamp.txt' % username
+	if os.name == 'nt':
+		data = data.replace('\\','/')
+	print 'sending data'
+	dataloc = __location__
+	if os.name == 'nt':
+		dataloc = dataloc.replace('\\','/')							   
+	s.sendall(dataloc+'/resources/programparts/sync/%s/timestampclient.txt' % username)
+	print 'awaiting reply'
+	s.recv(2)
+
+	#file_name,destination = data.split("@@")
+	file = data
+
+	uploads = __location__ + '/resources/uploads/'
+
+	file_name = data.split('/')[-1]
+
+	#print os.path.join(uploads, file_name)
+	print file
+	if os.path.exists(file):
+		print file_name + " found"
+		s.sendall('ok')
+		s.recv(2)
+
+		filelength =  os.path.getsize(file)
+		s.sendall('%16d' % filelength)
+		with open(file, 'rb') as f:
+			print file_name + " sending..."
+			sent = 0
+			while True:
+				sys.stdout.write(str((float(sent)/filelength)*100)[:4]+ '%' + '\r')
 				sys.stdout.flush()
 				data = f.read(10240)
 				if not data:
@@ -415,6 +469,7 @@ def sendItem(s,data): #send file to seed
 		#print file_name + " sending..."
 		#s.sendall(data)
 		s.recv(2)
+		sys.stdout.write('100.0%\n')
 		print file_name + " sending successful"
 		
 	else:
@@ -442,7 +497,7 @@ def sendCommand(s, data): #send sync files to server
 			files += fileloc + '@%$%@'
 		sendFileList(s, files)
 	elif data == 'spec':
-		sendSpecFiles(s, folder)
+		sendSpecFiles(s)
 	else:
 		s.sendall('n')
 		return 'unknown response'
@@ -464,8 +519,55 @@ def sendSyncFiles(s, folder):
 			syncedfiles += sendSyncFiles(s, itempath)
 	return syncedfiles
 
-def sendSpecFiles(s, folder):
+def sendSpecFiles(s):
+	s.sendall('ok')
+	s.recv(2)
+	while True:
+		s.sendall('ok')
+		sending = s.recv(1)
+		if sending == 'y':
+			s.sendall('ok')
+			file = s.recv(1024)
+			filepath = __location__ + ('/resources/programparts/sync/%s/' % username) + file
+			sendItem(s, filepath)
+		else:
+			break
 	pass
+
+def recvSpecFiles(s):
+	s.sendall('ok')
+	s.recv(2)
+	while True:
+		s.sendall('ok')
+		sending = s.recv(1)
+		if sending == 'y':
+			s.sendall('ok')
+			seed_recv_file(s, username)
+		else:
+			break
+	pass
+
+def receiveSyncCommand(s, data):
+	recvSpecFiles(s)
+	files = []
+	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, 'rb') as timedoc:
+		for line in timedoc:
+			files += [line]
+	files = files[1:]
+	print files
+	folder = __location__+'/resources/programparts/sync/%s/' % username
+	if os.name == 'nt':
+		folder = folder.replace('\\','/')	
+
+	filelist = []
+	for file in files:
+		print file
+		file = file.split(':')[0]
+		file = file.split('/resources/programparts/sync/%s/' % username)[1]
+		file = folder + file
+		filelist += [file]
+
+	removeUnsyncedFiles(s, folder, filelist)
 
 def receiveCommand(s, data): # loops receiving files until master denies
 	global username
@@ -590,9 +692,10 @@ def syncCommand(s, data):
 	valid = checkAuthCommand(s, data)
 	if not valid:
 		return "authentication error"
-	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "rb") as timedoc:
-		timestamp = timedoc.readline()
-	s.sendall(timestamp)
+	#with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "rb") as timedoc:
+	#	timestamp = timedoc.readline()
+	sendTimestamp(s)
+	s.sendall('ok')
 	works = s.recv(2)
 	if works != 'ok':
 		s.sendall('ok')
@@ -602,8 +705,10 @@ def syncCommand(s, data):
 	action = s.recv(4)
 	if action == 'send':
 		sendCommand(s, data)
+		return 'Sync complete.'
 	elif action == 'recv':
-		receiveCommand(s, data)
+		receiveSyncCommand(s, data)
+		return 'Sync complete.'
 	elif action == 'same':
 		return 'already synced'
 
@@ -694,12 +799,12 @@ def distinguishCommand(ser, data, command): #interpret what to tell seed
 
 
 def connectprotocolclient(s, data, command): #communicate via protocol to command seed
-	global password
+	global password, version
 	ser = s
 	identity = ser.recv(1024)
 	compat = 'n'
-	scriptname,function = identity.split(':')
-	if scriptname == 'sync' and function == 'sync_client':
+	scriptname,function,ser_version = identity.split(':')
+	if scriptname == 'sync' and function == 'sync_client' and ser_version == version:
 		compat = 'y'
 	if compat == 'y':
 		ser.sendall(compat)

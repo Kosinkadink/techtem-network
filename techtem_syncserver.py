@@ -8,7 +8,7 @@ from datetime import datetime
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))) #directory from which this script is ran
 char = """ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890"""
 saltlength = 16
-version = '1.0'
+version = '1.1'
 processID = 0
 
 
@@ -86,6 +86,7 @@ def serverterminal(): #used for server commands
 
 def seed_recv_file(s, username): #receives files from client
 	gene = s.recv(1024)
+	print gene
 	s.send('ok')
 	filelocpre = gene.split('/resources/programparts/sync/%s/' % username, 1)[1]
 	filename = filelocpre.split('/')[-1]
@@ -165,6 +166,69 @@ def receiveAllFiles(s, username): # loops receiving files until master denies
 	print localfiles
 	removeUnsyncedFiles(s, folder, localfiles)
 
+def receiveSpecFiles(s, username, list): # loops receiving files until master denies
+	s.recv(2)
+	s.sendall('ok')
+	for file in list:
+		s.recv(2)
+		s.sendall('y')
+		file = file.split(':')[0]
+		file = file.split('/resources/programparts/sync/%s/' % username)[1]
+		s.recv(2)
+		s.sendall(file)
+		print file
+		seed_recv_file(s, username)
+	s.recv(2)
+	s.sendall('n')
+
+def sendSpecFiles(s, username, list):
+	s.recv(2)
+	s.sendall('ok')
+	for file in list:
+		s.recv(2)
+		s.sendall('y')
+		file = file.split(':')[0]
+		file = file.split('/resources/programparts/sync/%s/' % username)[1]
+		s.recv(2)
+		sendItem(s, __location__ + ('/resources/programparts/sync/%s/' % username) + file)
+	s.recv(2)
+	s.sendall('n')
+
+
+def syncReceive(s, username):
+	filelist = determineUnsyncedRecv(username)
+	#return
+	print 'starting to receive spec files'
+	receiveSpecFiles(s, username, filelist)
+	print 'done receiving spec files'
+	clientfiles = []
+	with open(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username, 'rb') as clienttimedoc:
+		for line in clienttimedoc:
+			clientfiles += [line]
+	clientfiles = clientfiles[1:]
+	print clientfiles
+
+	folder = __location__+'/resources/programparts/sync/%s/' % username
+	if os.name == 'nt':
+		folder = folder.replace('\\','/')
+
+	filelist = []
+	for file in clientfiles:
+		print file
+		file = file.split(':')[0]
+		file = file.split('/resources/programparts/sync/%s/' % username)[1]
+		file = folder + file
+		filelist += [file]
+
+	removeUnsyncedFiles(s, folder, filelist)
+
+def syncSend(s, username):
+	filelist = determineUnsyncedSend(username)
+	print 'starting to send spec files'
+	sendSpecFiles(s, username, filelist)
+	print 'done sending spec files'
+
+
 def removeUnsyncedFiles(s, folder, files):
 	#total_size = os.path.getsize(folder)
 	syncedfiles = []
@@ -214,13 +278,22 @@ def syncCommand(s):
 	if not item[0]:
 		print "authentication error"
 		return "authentication error"
-	clienttimestamp = s.recv(32)
 	username = item[1]
+	seed_recv_file(s, username)
+	s.recv(2)
+
+	with open(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username, 'r') as timeclient:
+		clienttimestamp = timeclient.readline()
+		if clienttimestamp.endswith('\n'):
+			clienttimestamp = clienttimestamp.split('\n')[0]
+
 	if not os.path.exists(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username):
 		with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "a") as timedoc:
 			timedoc.write("""00000000000000""")
 	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, "rb") as timedoc:
 		servertimestamp = timedoc.readline()
+		if servertimestamp.endswith('\n'):
+			servertimestamp = servertimestamp.split('\n')[0]
 	print clienttimestamp
 	print servertimestamp
 	try:
@@ -236,21 +309,54 @@ def syncCommand(s):
 	s.recv(2)
 	if servertimestamp < clienttimestamp:
 		s.sendall('send')
-		receiveAllFiles(s, username)
+		syncReceive(s, username)	
+
+		#receiveAllFiles(s, username)
 	elif servertimestamp > clienttimestamp:
 		s.sendall('recv')
-		filessent = sendSyncFiles(s, __location__+'/resources/programparts/sync/%s/' % username)
-		print filessent
-		s.sendall('n')
-		s.recv(2)
-		files = '@%$%@'
-		for fileloc in filessent:
-			files += fileloc + '@%$%@'
-		sendFileList(s, files)
+		syncSend(s, username)
+		if os.path.exists(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username):
+			os.remove(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username)
 	elif servertimestamp == clienttimestamp:
 		s.sendall('same')
 		print 'client and server already synced'
+		if os.path.exists(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username):
+			os.remove(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username)
 		return 'already synced'
+
+def determineUnsyncedRecv(username):
+	clientfiles = []
+	serverfiles = []
+	todownload = []
+	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, 'rb') as servertimedoc:
+		for line in servertimedoc:
+			serverfiles += [line]
+	with open(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username, 'rb') as clienttimedoc:
+		for line in clienttimedoc:
+			clientfiles += [line]
+	clientfiles = clientfiles[1:]
+	serverfiles = serverfiles[1:]
+	
+	todownload = list(set(clientfiles) - set(serverfiles))
+
+	return todownload
+
+def determineUnsyncedSend(username):
+	clientfiles = []
+	serverfiles = []
+	tosend = []
+	with open(__location__+'/resources/programparts/sync/%s/timestamp.txt' % username, 'rb') as servertimedoc:
+		for line in servertimedoc:
+			serverfiles += [line]
+	with open(__location__+'/resources/programparts/sync/%s/timestampclient.txt' % username, 'rb') as clienttimedoc:
+		for line in clienttimedoc:
+			clientfiles += [line]
+	clientfiles = clientfiles[1:]
+	serverfiles = serverfiles[1:]
+	
+	tosend = list(set(serverfiles) - set(clientfiles))
+
+	return tosend
 
 def sendSyncFiles(s, folder):
 	#total_size = os.path.getsize(folder)
@@ -293,10 +399,17 @@ def sendItem(s,data): #send file to seed
 		s.sendall('%16d' % filelength)
 		with open(file, 'rb') as f:
 			print file_name + " sending..."
+			sent = 0
 			while True:
+				try:
+					sys.stdout.write(str((float(sent)/filelength)*100)[:4]+ '%' + '\r')
+					sys.stdout.flush()
+				except:
+					pass
 				data = f.read(10240)
 				if not data:
 					break
+				sent += len(data)
 				s.sendall(data)
 		#print 'program: %s' % str(len(data))
 		#print str(os.path.getsize(file))
@@ -485,10 +598,10 @@ def servergen():
 		clientsocket,addr = serversocket.accept()
 		print("Got a connection from %s" % str(addr))
 		try:
-			clientsocket.sendall('sync:sync_client') #check if sync_client is connecting
+			clientsocket.sendall('sync:sync_client:%s' % version) #check if sync_client is connecting
 			compat = clientsocket.recv(1)
 			if compat != 'y': #not a sync_client, so respond with 
-				clientsocket.sendall('need *sync* protocol\n')
+				clientsocket.sendall('need *sync* protocol version %s\n' % version)
 				print 'does not have protocol'
 				clientsocket.close
 			else:
